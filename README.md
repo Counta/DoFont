@@ -18,8 +18,10 @@
 
 ## TODOs
 1.为可变字重字体添加支持
+
 2.尝试制作WebUI
 
 ## 致谢
 [OpenCC](https://github.com/BYVoid/OpenCC) 原始项目替换表的基础来源
+
 [TCFontCreator](https://github.com/GuiWonder/TCFontCreator) 这一替换字形的想法来源，项目当初只是为了为此添加批处理功能
