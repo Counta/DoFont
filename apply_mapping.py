@@ -1,12 +1,14 @@
 import os
 import re
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, TTLibError
+from fontTools.subset import Subsetter, Options
 
 # Apply mapping rules from a tab-separated text file.
 # Lines starting with # are ignored.
 # Rule A<TAB>B => map A to B
 # Rule A<TAB>B<TAB>C => map A and B to C
 # Only single-codepoint mappings are applied.
+# After mapping, drop unreferenced glyphs by subsetting to the new cmap.
 
 def parse_map(path):
     rules = []
@@ -27,7 +29,7 @@ def parse_map(path):
     return rules
 
 
-def apply_mapping(font_path, map_path, out_path):
+def apply_mapping_and_subset(font_path, map_path, out_path):
     rules = parse_map(map_path)
     font = TTFont(font_path)
 
@@ -61,6 +63,32 @@ def apply_mapping(font_path, map_path, out_path):
                     continue
                 t.cmap[cp] = dst_glyph
             updated += 1
+
+    # Subset to drop glyphs not reachable from the new cmap
+    opts = Options()
+    opts.retain_gids = False
+    opts.notdef_glyph = True
+    opts.notdef_outline = True
+    opts.recommended_glyphs = True
+    opts.layout_features = '*'
+
+    subsetter = Subsetter(options=opts)
+
+    keep_unicodes = set()
+    for t in unicode_tables:
+        keep_unicodes.update(t.cmap.keys())
+
+    subsetter.populate(unicodes=keep_unicodes)
+
+    try:
+        subsetter.subset(font)
+    except TTLibError:
+        # Some fonts have invalid vmtx/vhea data; drop vertical metrics and retry.
+        if 'vmtx' in font:
+            del font['vmtx']
+        if 'vhea' in font:
+            del font['vhea']
+        subsetter.subset(font)
 
     font.save(out_path, reorderTables=False)
     return updated, missing_dst
@@ -130,7 +158,7 @@ def main():
     for font_path in in_files:
         root, ext = os.path.splitext(font_path)
         out_path = root + suffix + ext
-        updated, missing_dst = apply_mapping(font_path, map_path, out_path)
+        updated, missing_dst = apply_mapping_and_subset(font_path, map_path, out_path)
         print(os.path.basename(font_path), 'mapped', updated, 'missing_dst', missing_dst, 'out', os.path.basename(out_path))
 
 
